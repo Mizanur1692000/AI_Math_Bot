@@ -11,6 +11,33 @@ from .serializers import ChatRequestSerializer, ChatResponseSerializer, EmailSer
 from django.conf import settings
 from django.contrib.sessions.models import Session
 import uuid
+from langdetect import detect
+
+SUPPORTED_LANGS = {
+    "en": ("en-US", "English (US)"),
+    "es": ("es-ES", "Español (España)"),
+    "fr": ("fr-FR", "Français"),
+    "de": ("de-DE", "Deutsch"),
+    "zh": ("zh-CN", "简体中文"),
+    "ja": ("ja-JP", "日本語"),
+    "he": ("he-IL", "עברית"),
+}
+
+ALIAS_MAP = {
+    "iw": "he",
+    "zh-cn": "zh",
+    "zh-tw": "zh",
+}
+
+def _detect_supported_language(text: str):
+    try:
+        code = detect(text) or "en"
+    except Exception:
+        return SUPPORTED_LANGS["en"]
+    code = code.lower()
+    code = ALIAS_MAP.get(code, code)
+    base = code.split("-")[0]
+    return SUPPORTED_LANGS.get(base, SUPPORTED_LANGS["en"])
 
 class EmailView(CreateAPIView):
     serializer_class = EmailSerializer
@@ -79,16 +106,20 @@ class ChatView(CreateAPIView):
             elif item['type'] == 'ai':
                 chat_history.add_ai_message(item['content'])
         
-        # Set up LLM for math-related questions only
-        llm = ChatGoogleGenerativeAI(
-            model="gemini-2.5-flash",
-            google_api_key=settings.GEMINI_API_KEY,
-            temperature=0.5,
-        )
+        target_locale, target_lang_name = _detect_supported_language(user_message)
+
+        try:
+            llm = ChatGoogleGenerativeAI(
+                model="gemini-2.5-flash",
+                google_api_key=settings.GEMINI_API_KEY,
+                temperature=0.5,
+            )
+        except Exception as e:
+            raise ValidationError(f"LLM initialization failed: {str(e)}")
         
         # Update prompt to instruct the AI to handle only math-related queries
         prompt = ChatPromptTemplate.from_messages([
-            ("system", "You are a math-focused AI assistant. Your task is to answer mathematical questions or solve math problems only. Do not provide answers unrelated to math."),
+            ("system", f"You are a math-focused AI assistant. Answer only mathematical questions. Always respond in {target_lang_name}. If a query is not related to math, respond briefly in {target_lang_name} saying you only handle math."),
             MessagesPlaceholder(variable_name="history"),
             ("human", "{input}"),
         ])
@@ -103,8 +134,11 @@ class ChatView(CreateAPIView):
         )
         
         config = {"configurable": {"session_id": session_id}}
-        response = runnable_with_history.invoke({"input": user_message}, config=config)
-        ai_response = response.content
+        try:
+            response = runnable_with_history.invoke({"input": user_message}, config=config)
+            ai_response = response.content
+        except Exception as e:
+            return Response({"detail": f"Chat service error: {str(e)}"}, status=status.HTTP_502_BAD_GATEWAY)
         
         # Save updated history
         history_data = []
