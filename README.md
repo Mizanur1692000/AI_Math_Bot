@@ -71,3 +71,4 @@ Language Behavior
 - The chatbot auto-detects the user's language from the message and replies in the same language, limited to the following locales:
 	- en-US, es-ES, fr-FR, de-DE, zh-CN, ja-JP, he-IL
 - If language cannot be detected or unsupported, it defaults to English (US).
+- You can override the output language by providing an optional `output_language` field in your request. Supported language codes are `en`, `es`, `fr`, `de`, `zh`, `ja`, `he`.
