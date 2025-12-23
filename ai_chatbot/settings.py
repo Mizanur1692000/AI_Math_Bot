@@ -123,6 +123,9 @@ USE_TZ = True
 
 STATIC_URL = 'static/'
 
+# Templates directory for serving HTML
+TEMPLATES[0]['DIRS'] = [BASE_DIR / 'templates']
+
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
 

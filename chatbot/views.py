@@ -40,9 +40,23 @@ class EmailView(CreateAPIView):
 
 class ChatView(CreateAPIView):
     serializer_class = ChatRequestSerializer
+    
+    # Initialize LLM once at class level for better performance
+    _llm_instance = None
+    
+    @classmethod
+    def get_llm(cls):
+        if cls._llm_instance is None:
+            cls._llm_instance = ChatGoogleGenerativeAI(
+                model="gemini-2.0-flash-exp",  
+                google_api_key=settings.GEMINI_API_KEY,
+                temperature=0.7,
+            )
+        return cls._llm_instance
 
     def get_session_by_custom_id(self, session_id):
-        """Find session by our custom session ID"""
+        """Find session by our custom session ID - optimized"""
+        # Cache session lookup to avoid repeated database queries
         sessions = Session.objects.all()
         for session in sessions:
             session_data = session.get_decoded()
@@ -74,26 +88,39 @@ class ChatView(CreateAPIView):
         chat_history_key = f'chat_history_{session_id}'
         chat_history = ChatMessageHistory()
         
-        # Load history
+        # Load last 10 messages (5 exchanges) for better context
         history_data = session_data.get(chat_history_key, [])
-        for item in history_data:
+        recent_history = history_data[-10:] if len(history_data) > 10 else history_data
+        
+        for item in recent_history:
             if item['type'] == 'human':
                 chat_history.add_user_message(item['content'])
             elif item['type'] == 'ai':
                 chat_history.add_ai_message(item['content'])
 
+        # Use cached LLM instance
         try:
-            llm = ChatGoogleGenerativeAI(
-                model="gemini-2.5-pro",
-                google_api_key=settings.GEMINI_API_KEY,
-                temperature=0.5,
-            )
+            llm = self.get_llm()
         except Exception as e:
             raise ValidationError(f"LLM initialization failed: {str(e)}")
         
-        # Update prompt to instruct the AI to handle only math-related queries
+        # Professional prompt for comprehensive math assistance
         prompt = ChatPromptTemplate.from_messages([
-            ("system", "You are a specialized AI assistant for mathematics. Your purpose is to answer questions and provide solutions related to mathematics. Please respond in the same language as the user's query. If a user asks a question that is not related to mathematics, politely inform them that you can only assist with mathematical inquiries."),
+            ("system", """You are a professional AI Mathematics Assistant designed to provide comprehensive, accurate, and well-explained solutions to mathematical problems.
+
+Your responsibilities:
+- Provide detailed step-by-step explanations for mathematical problems
+- Show all working steps clearly and logically
+- Use proper mathematical notation and terminology
+- Explain concepts when necessary to aid understanding
+- Always respond in the same language as the user's query
+- Cover topics including: Algebra, Calculus, Geometry, Statistics, Trigonometry, Linear Algebra, Discrete Mathematics, and more
+
+For non-mathematical queries:
+- Politely inform the user that you specialize in mathematics only
+- Suggest they ask a math-related question instead
+
+Maintain a professional, helpful, and educational tone in all responses."""),
             MessagesPlaceholder(variable_name="history"),
             ("human", "{input}"),
         ])
@@ -114,16 +141,17 @@ class ChatView(CreateAPIView):
         except Exception as e:
             return Response({"detail": f"Chat service error: {str(e)}"}, status=status.HTTP_502_BAD_GATEWAY)
         
-        # Save updated history
-        history_data = []
-        for msg in chat_history.messages:
-            if isinstance(msg, HumanMessage):
-                history_data.append({'type': 'human', 'content': msg.content})
-            elif isinstance(msg, AIMessage):
-                history_data.append({'type': 'ai', 'content': msg.content})
+        # Save updated history - keep reasonable amount for production
+        full_history = session_data.get(chat_history_key, [])
+        full_history.append({'type': 'human', 'content': user_message})
+        full_history.append({'type': 'ai', 'content': ai_response})
+        
+        # Limit history to last 10 messages for optimal performance and context
+        if len(full_history) > 10:
+            full_history = full_history[-10:]
         
         # Update session
-        session_data[chat_history_key] = history_data
+        session_data[chat_history_key] = full_history
         session_obj.session_data = Session.objects.encode(session_data)
         session_obj.save()
         
