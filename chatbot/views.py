@@ -11,33 +11,8 @@ from .serializers import ChatRequestSerializer, ChatResponseSerializer, EmailSer
 from django.conf import settings
 from django.contrib.sessions.models import Session
 import uuid
-from langdetect import detect
 
-SUPPORTED_LANGS = {
-    "en": ("en-US", "English (US)"),
-    "es": ("es-ES", "Español (España)"),
-    "fr": ("fr-FR", "Français"),
-    "de": ("de-DE", "Deutsch"),
-    "zh": ("zh-CN", "简体中文"),
-    "ja": ("ja-JP", "日本語"),
-    "he": ("he-IL", "עברית"),
-}
 
-ALIAS_MAP = {
-    "iw": "he",
-    "zh-cn": "zh",
-    "zh-tw": "zh",
-}
-
-def _detect_supported_language(text: str):
-    try:
-        code = detect(text) or "en"
-    except Exception:
-        return SUPPORTED_LANGS["en"]
-    code = code.lower()
-    code = ALIAS_MAP.get(code, code)
-    base = code.split("-")[0]
-    return SUPPORTED_LANGS.get(base, SUPPORTED_LANGS["en"])
 
 class EmailView(CreateAPIView):
     serializer_class = EmailSerializer
@@ -91,6 +66,7 @@ class ChatView(CreateAPIView):
         if not session_obj or not session_data:
             raise NotFound("Invalid session ID. Please set your email first via /api/set_email/")
         
+        
         if 'user_email' not in session_data:
             raise NotFound("Invalid session. Please set your email first via /api/set_email/")
         
@@ -105,8 +81,6 @@ class ChatView(CreateAPIView):
                 chat_history.add_user_message(item['content'])
             elif item['type'] == 'ai':
                 chat_history.add_ai_message(item['content'])
-        
-        target_locale, target_lang_name = _detect_supported_language(user_message)
 
         try:
             llm = ChatGoogleGenerativeAI(
@@ -119,7 +93,7 @@ class ChatView(CreateAPIView):
         
         # Update prompt to instruct the AI to handle only math-related queries
         prompt = ChatPromptTemplate.from_messages([
-            ("system", f"You are a math-focused AI assistant. Answer only mathematical questions. Always respond in {target_lang_name}. If a query is not related to math, respond briefly in {target_lang_name} saying you only handle math."),
+            ("system", "You are a specialized AI assistant for mathematics. Your purpose is to answer questions and provide solutions related to mathematics. Please respond in the same language as the user's query. If a user asks a question that is not related to mathematics, politely inform them that you can only assist with mathematical inquiries."),
             MessagesPlaceholder(variable_name="history"),
             ("human", "{input}"),
         ])
