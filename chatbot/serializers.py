@@ -9,4 +9,3 @@ class ChatResponseSerializer(serializers.Serializer):
 
 class EmailSerializer(serializers.Serializer):
     email = serializers.EmailField(required=True)
-

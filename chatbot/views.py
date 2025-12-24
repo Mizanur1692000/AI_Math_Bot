@@ -141,7 +141,7 @@ Maintain a professional, helpful, and educational tone in all responses."""),
         except Exception as e:
             return Response({"detail": f"Chat service error: {str(e)}"}, status=status.HTTP_502_BAD_GATEWAY)
         
-        # Save updated history - keep reasonable amount for production
+        # Save updated history - keep reasonable amount for production level use
         full_history = session_data.get(chat_history_key, [])
         full_history.append({'type': 'human', 'content': user_message})
         full_history.append({'type': 'ai', 'content': ai_response})
