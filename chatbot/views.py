@@ -142,7 +142,7 @@ Maintain a professional, helpful, and educational tone in all responses."""),
         except Exception as e:
             return Response({"detail": f"Chat service error: {str(e)}"}, status=status.HTTP_502_BAD_GATEWAY)
 
-        # Ensure plain-text output by stripping common math delimiters and formatting
+        # Ensure plain-text output by stripping common math delimiters
         def _strip_math_delimiters(text: str) -> str:
             if not isinstance(text, str):
                 return text
@@ -153,11 +153,6 @@ Maintain a professional, helpful, and educational tone in all responses."""),
             text = text.replace(r"\[", "").replace(r"\]", "")
             # Remove any stray dollar signs
             text = text.replace("$", "")
-            # Remove asterisks used for markdown formatting (bold, italic, emphasis)
-            text = re.sub(r"\*\*\*(.*?)\*\*\*", r"\1", text)  # Remove bold+italic ***text***
-            text = re.sub(r"\*\*(.*?)\*\*", r"\1", text)      # Remove bold **text**
-            text = re.sub(r"\*(.*?)\*", r"\1", text)          # Remove italic *text*
-            text = text.replace("*", "")                       # Remove any remaining asterisks
             return text
 
         ai_response = _strip_math_delimiters(ai_response)
