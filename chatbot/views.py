@@ -11,6 +11,7 @@ from .serializers import ChatRequestSerializer, ChatResponseSerializer, EmailSer
 from django.conf import settings
 from django.contrib.sessions.models import Session
 import uuid
+import re
 
 
 
@@ -140,6 +141,21 @@ Maintain a professional, helpful, and educational tone in all responses."""),
             ai_response = response.content
         except Exception as e:
             return Response({"detail": f"Chat service error: {str(e)}"}, status=status.HTTP_502_BAD_GATEWAY)
+
+        # Ensure plain-text output by stripping common math delimiters
+        def _strip_math_delimiters(text: str) -> str:
+            if not isinstance(text, str):
+                return text
+            # Remove display math and inline LaTeX delimiters while preserving content
+            text = re.sub(r"\$\$(.*?)\$\$", r"\1", text, flags=re.DOTALL)
+            text = re.sub(r"\$(.*?)\$", r"\1", text, flags=re.DOTALL)
+            text = text.replace(r"\(", "").replace(r"\)", "")
+            text = text.replace(r"\[", "").replace(r"\]", "")
+            # Remove any stray dollar signs
+            text = text.replace("$", "")
+            return text
+
+        ai_response = _strip_math_delimiters(ai_response)
         
         # Save updated history - keep reasonable amount for production level use
         full_history = session_data.get(chat_history_key, [])
